@@ -16,6 +16,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Without this, IHostedService (from Microsoft.Extensions.Hosting.Abstractions)
+      resolves from a privately-restored NuGet copy instead of the server's own
+      loaded shared-framework assembly. That identity mismatch means a plugin's
+      AddHostedService<T>() registration is invisible to the server's actual
+      hosted-service startup loop - StartAsync silently never runs. Referencing
+      the shared framework directly makes the plugin bind to the exact same
+      assembly the server has already loaded.
+    -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Jellyfin.Controller" Version="12.1.0" />
     <PackageReference Include="Jellyfin.Model" Version="12.1.0" />
   </ItemGroup>
