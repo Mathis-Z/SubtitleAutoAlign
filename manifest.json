@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/Mathis-Z/subtitle-auto-align/main/icon.png",
     "versions": [
       {
+        "version": "0.1.5.0",
+        "changelog": "adding scheduled task to process existing subs",
+        "targetAbi": "12.1.0.0",
+        "sourceUrl": "https://github.com/Mathis-Z/SubtitleAutoAlign/releases/download/v0.1.5.0/subtitle-auto-align-0.1.5.0.zip",
+        "checksum": "efebfd9ac389ac1594f2318ac6309593",
+        "timestamp": "2026-09-23T16:51:02Z"
+      },
+      {
         "version": "0.1.4.0",
         "changelog": "See release notes.",
         "targetAbi": "12.1.0.0",
