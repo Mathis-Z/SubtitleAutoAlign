@@ -56,7 +56,17 @@ jobs:
 
       - name: Build standalone binary
         run: |
-          pyinstaller --onefile --name ffsubsync --collect-all ffsubsync --collect-all auditok ffsubsync_entry.py
+          # webrtcvad is an optional legacy VAD backend ffsubsync can use, but
+          # we don't install it (auditok, which is collected below, is the
+          # default backend). PyInstaller's bundled hook for webrtcvad tries
+          # to read its package metadata regardless of whether it's actually
+          # used, and crashes if it's absent - so exclude it from analysis
+          # entirely rather than installing a dependency we don't need.
+          pyinstaller --onefile --name ffsubsync \
+            --collect-all ffsubsync \
+            --collect-all auditok \
+            --exclude-module webrtcvad \
+            ffsubsync_entry.py
 
       - name: Smoke test binary
         run: ./dist/ffsubsync --help
