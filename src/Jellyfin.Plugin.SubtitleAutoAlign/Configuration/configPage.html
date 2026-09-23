@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Subtitle Auto Align</title>
+</head>
+<body>
+    <div id="SubtitleAutoAlignConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="SubtitleAutoAlignConfigForm">
+                    <div class="verticalSection">
+                        <h2>Subtitle Auto Align</h2>
+                        <p>Automatically runs ffsubsync on newly downloaded subtitles for movies, writing an aligned copy alongside the original.</p>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="EnableAutoAlign" name="EnableAutoAlign" type="checkbox" is="emby-checkbox" />
+                            <span>Enable automatic alignment</span>
+                        </label>
+                    </div>
+
+                    <div class="inputContainer">
+                        <input id="FfSubSyncPath" name="FfSubSyncPath" type="text" is="emby-input" label="ffsubsync path (optional)" />
+                        <div class="fieldDescription">Leave empty to auto-detect: uses the ffsubsync binary bundled with this plugin (Linux x64), or falls back to "ffsubsync" on PATH. Set an explicit path to override.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <input id="ExtraArguments" name="ExtraArguments" type="text" is="emby-input" label="Extra ffsubsync arguments" />
+                        <div class="fieldDescription">Optional extra CLI arguments, e.g. --max-offset-seconds 60</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <input id="TimeoutSeconds" name="TimeoutSeconds" type="number" is="emby-input" label="Timeout (seconds)" min="1" />
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="OverwriteExistingAlignedSubtitle" name="OverwriteExistingAlignedSubtitle" type="checkbox" is="emby-checkbox" />
+                            <span>Overwrite existing aligned subtitle if present</span>
+                        </label>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script type="text/javascript">
+        (function () {
+            const pluginId = "8f5c9d3a-6b1e-4a2f-9c7d-2e1b4f6a8c3d";
+
+            function loadConfig(view) {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    view.querySelector('#EnableAutoAlign').checked = config.EnableAutoAlign;
+                    view.querySelector('#FfSubSyncPath').value = config.FfSubSyncPath;
+                    view.querySelector('#ExtraArguments').value = config.ExtraArguments;
+                    view.querySelector('#TimeoutSeconds').value = config.TimeoutSeconds;
+                    view.querySelector('#OverwriteExistingAlignedSubtitle').checked = config.OverwriteExistingAlignedSubtitle;
+                    Dashboard.hideLoadingMsg();
+                });
+            }
+
+            function saveConfig(view) {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.EnableAutoAlign = view.querySelector('#EnableAutoAlign').checked;
+                    config.FfSubSyncPath = view.querySelector('#FfSubSyncPath').value;
+                    config.ExtraArguments = view.querySelector('#ExtraArguments').value;
+                    config.TimeoutSeconds = parseInt(view.querySelector('#TimeoutSeconds').value, 10);
+                    config.OverwriteExistingAlignedSubtitle = view.querySelector('#OverwriteExistingAlignedSubtitle').checked;
+
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+            }
+
+            document.querySelector('#SubtitleAutoAlignConfigPage')
+                .addEventListener('pageshow', function () {
+                    loadConfig(this);
+                });
+
+            document.querySelector('#SubtitleAutoAlignConfigForm')
+                .addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    saveConfig(document.querySelector('#SubtitleAutoAlignConfigPage'));
+                    return false;
+                });
+        })();
+    </script>
+</body>
+</html>

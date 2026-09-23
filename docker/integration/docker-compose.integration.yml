@@ -1,0 +1,5 @@
+services:
+  integration-tests:
+    build:
+      context: ../..
+      dockerfile: docker/integration/Dockerfile.testrunner

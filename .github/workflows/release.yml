@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Plugin version to release, e.g. 1.0.0.0'
+        required: true
+        type: string
+      changelog:
+        description: 'Changelog entry for this release'
+        required: false
+        type: string
+        default: 'See release notes.'
+
+permissions:
+  contents: write
+
+env:
+  TARGET_ABI: '10.10.0.0'
+  PLUGIN_PROJECT: src/Jellyfin.Plugin.SubtitleAutoAlign
+  ARTIFACT_NAME: subtitle-auto-align-${{ github.event.inputs.version }}
+
+jobs:
+  build-ffsubsync:
+    # Builds a standalone, PyInstaller-frozen ffsubsync binary for linux-x64 so
+    # the plugin can ship it and avoid requiring a separate Python install on
+    # the Jellyfin host. ffmpeg itself is NOT bundled here: ffsubsync only
+    # needs it at runtime for audio extraction, and Jellyfin already ships its
+    # own ffmpeg, so the plugin can point at that instead.
+    #
+    # PyInstaller cannot cross-compile, so binaries for other platforms
+    # (linux-arm64, windows, macOS) would each need their own native runner;
+    # only linux-x64 is built for now, per current scope. On unbundled
+    # platforms the plugin falls back to "ffsubsync" resolved via PATH.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ffsubsync and PyInstaller
+        run: pip install ffsubsync pyinstaller
+
+      - name: Write PyInstaller entry point
+        run: |
+          cat > ffsubsync_entry.py <<'PYEOF'
+          import sys
+
+          from ffsubsync.ffsubsync import main
+
+          if __name__ == "__main__":
+              sys.exit(main())
+          PYEOF
+
+      - name: Build standalone binary
+        run: |
+          pyinstaller --onefile --name ffsubsync --collect-all ffsubsync --collect-all auditok ffsubsync_entry.py
+
+      - name: Smoke test binary
+        run: ./dist/ffsubsync --help
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffsubsync-linux-x64
+          path: dist/ffsubsync
+          if-no-files-found: error
+
+  release:
+    needs: build-ffsubsync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish plugin
+        run: |
+          dotnet publish "${{ env.PLUGIN_PROJECT }}" \
+            -c Release \
+            -p:Version=${{ github.event.inputs.version }} \
+            -o out
+
+      - name: Download bundled ffsubsync binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ffsubsync-linux-x64
+          path: out/bundled/linux-x64
+
+      - name: Mark bundled binary executable
+        run: chmod +x out/bundled/linux-x64/ffsubsync
+
+      - name: Package zip
+        run: |
+          cd out
+          zip -r --symlinks "../${{ env.ARTIFACT_NAME }}.zip" .
+          cd ..
+
+      - name: Compute checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(md5sum "${{ env.ARTIFACT_NAME }}.zip" | awk '{print $1}')
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+      - name: Update manifest.json
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          CHANGELOG: ${{ github.event.inputs.changelog }}
+          CHECKSUM: ${{ steps.checksum.outputs.checksum }}
+          TARGET_ABI: ${{ env.TARGET_ABI }}
+          SOURCE_URL: https://github.com/${{ github.repository }}/releases/download/v${{ github.event.inputs.version }}/${{ env.ARTIFACT_NAME }}.zip
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          with open("manifest.json", "r", encoding="utf-8") as f:
+              manifest = json.load(f)
+
+          entry = {
+              "version": os.environ["VERSION"],
+              "changelog": os.environ["CHANGELOG"],
+              "targetAbi": os.environ["TARGET_ABI"],
+              "sourceUrl": os.environ["SOURCE_URL"],
+              "checksum": os.environ["CHECKSUM"],
+              "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+          }
+
+          plugin = manifest[0]
+          plugin.setdefault("versions", [])
+          plugin["versions"] = [v for v in plugin["versions"] if v["version"] != entry["version"]]
+          plugin["versions"].insert(0, entry)
+
+          with open("manifest.json", "w", encoding="utf-8") as f:
+              json.dump(manifest, f, indent=2)
+              f.write("\n")
+          PYEOF
+
+      - name: Commit manifest.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "Release v${{ github.event.inputs.version }}"
+          git push
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ github.event.inputs.version }}" \
+            "${{ env.ARTIFACT_NAME }}.zip" \
+            --title "v${{ github.event.inputs.version }}" \
+            --notes "${{ github.event.inputs.changelog }}"
