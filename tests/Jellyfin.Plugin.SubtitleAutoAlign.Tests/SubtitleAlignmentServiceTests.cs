@@ -109,13 +109,40 @@ public class SubtitleAlignmentServiceTests : IDisposable
         Assert.Equal(1, runner.CallCount);
     }
 
-    private (SubtitleAlignmentService Service, FakeProcessRunner Runner) CreateService(PluginConfiguration configuration)
+    [Fact]
+    public async Task AlignAsync_FfmpegDirectoryKnown_PassesFfmpegPathToFfSubSync()
+    {
+        var (service, runner) = CreateService(new PluginConfiguration(), ffmpegDirectory: "/usr/lib/jellyfin-ffmpeg");
+
+        var request = new AlignmentRequest(Guid.NewGuid(), VideoPath(), SubtitlePath());
+        await service.AlignAsync(request, CancellationToken.None);
+
+        var arguments = Assert.IsAssignableFrom<System.Collections.Generic.IReadOnlyList<string>>(runner.LastArguments);
+        var flagIndex = Assert.Single(Enumerable.Range(0, arguments.Count), i => arguments[i] == "--ffmpeg-path");
+        Assert.Equal("/usr/lib/jellyfin-ffmpeg", arguments[flagIndex + 1]);
+    }
+
+    [Fact]
+    public async Task AlignAsync_FfmpegDirectoryUnknown_OmitsFfmpegPath()
+    {
+        var (service, runner) = CreateService(new PluginConfiguration(), ffmpegDirectory: null);
+
+        var request = new AlignmentRequest(Guid.NewGuid(), VideoPath(), SubtitlePath());
+        await service.AlignAsync(request, CancellationToken.None);
+
+        Assert.DoesNotContain("--ffmpeg-path", runner.LastArguments!);
+    }
+
+    private (SubtitleAlignmentService Service, FakeProcessRunner Runner) CreateService(
+        PluginConfiguration configuration,
+        string? ffmpegDirectory = null)
     {
         var runner = new FakeProcessRunner();
         var service = new SubtitleAlignmentService(
             runner,
             new FfSubSyncLocator(_tempDirectory),
             () => configuration,
+            () => ffmpegDirectory,
             NullLogger<SubtitleAlignmentService>.Instance);
         return (service, runner);
     }

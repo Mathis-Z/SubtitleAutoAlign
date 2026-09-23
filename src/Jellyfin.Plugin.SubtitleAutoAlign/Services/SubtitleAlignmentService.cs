@@ -14,6 +14,7 @@ public sealed class SubtitleAlignmentService : ISubtitleAlignmentService
     private readonly IProcessRunner _processRunner;
     private readonly IFfSubSyncLocator _ffSubSyncLocator;
     private readonly Func<PluginConfiguration> _configurationAccessor;
+    private readonly Func<string?> _ffmpegDirectoryAccessor;
     private readonly ILogger<SubtitleAlignmentService> _logger;
 
     /// <summary>
@@ -22,16 +23,20 @@ public sealed class SubtitleAlignmentService : ISubtitleAlignmentService
     /// <param name="processRunner">Abstraction used to invoke ffsubsync.</param>
     /// <param name="ffSubSyncLocator">Resolves which ffsubsync executable to invoke.</param>
     /// <param name="configurationAccessor">Delegate returning the current plugin configuration.</param>
+    /// <param name="ffmpegDirectoryAccessor">Delegate returning the directory holding the ffmpeg/ffprobe
+    /// binaries to use (Jellyfin's own), or null to let ffsubsync search PATH.</param>
     /// <param name="logger">Logger.</param>
     public SubtitleAlignmentService(
         IProcessRunner processRunner,
         IFfSubSyncLocator ffSubSyncLocator,
         Func<PluginConfiguration> configurationAccessor,
+        Func<string?> ffmpegDirectoryAccessor,
         ILogger<SubtitleAlignmentService> logger)
     {
         _processRunner = processRunner ?? throw new ArgumentNullException(nameof(processRunner));
         _ffSubSyncLocator = ffSubSyncLocator ?? throw new ArgumentNullException(nameof(ffSubSyncLocator));
         _configurationAccessor = configurationAccessor ?? throw new ArgumentNullException(nameof(configurationAccessor));
+        _ffmpegDirectoryAccessor = ffmpegDirectoryAccessor ?? throw new ArgumentNullException(nameof(ffmpegDirectoryAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -59,7 +64,8 @@ public sealed class SubtitleAlignmentService : ISubtitleAlignmentService
             request.VideoPath,
             request.SubtitlePath,
             outputPath,
-            configuration.ExtraArguments);
+            configuration.ExtraArguments,
+            _ffmpegDirectoryAccessor());
 
         var ffSubSyncPath = _ffSubSyncLocator.Resolve(configuration.FfSubSyncPath);
 

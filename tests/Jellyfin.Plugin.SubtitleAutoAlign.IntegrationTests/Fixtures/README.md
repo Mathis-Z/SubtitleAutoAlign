@@ -1,11 +1,22 @@
 # Integration test fixtures
 
-Add a short (30-60s) sample video and matching subtitle here before running the
-Docker integration tests:
+- `us-now-5min.mp4` — the first 5 minutes of the documentary *Us Now* (2009),
+  shrunk for the repo (160px wide, 5 fps, mono 48 kbit/s AAC); ffsubsync only
+  uses the audio.
+- `us-now-5min.en.srt` — the film's English subtitle, trimmed to the same
+  5 minutes (109 cues). It is in sync with the film (ffsubsync measures about
+  -0.45 s), so tests shift it by a known amount and check that alignment
+  restores the original timings.
 
-- `sample.mp4` — a short public-domain video clip with an audible dialogue track.
-- `sample.en.srt` — a subtitle for that clip, deliberately offset in time so
-  ffsubsync has something to correct.
+*Us Now* was released by its makers under a Creative Commons licence; check
+the exact terms before redistributing these files outside this repository.
 
-These are placeholders; the integration test suite will fail with a clear
-message until both files are present.
+To regenerate from the full film (`Us Now.mp4`, `Us_Now_eng.srt`):
+
+```sh
+ffmpeg -i "Us Now.mp4" -t 300 -vf "scale=160:-2,fps=5" -c:v libopenh264 -b:v 40k \
+  -c:a aac -b:a 48k -ac 1 -ar 24000 -movflags +faststart us-now-5min.mp4
+```
+
+and keep only the subtitle cues that start before 00:05:00, clamping their end
+times to 00:05:00.

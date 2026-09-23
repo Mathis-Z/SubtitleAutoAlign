@@ -14,9 +14,10 @@ the result alongside the original with an `.autoaligned` suffix (e.g.
 
 On **Linux x64**, no further setup is needed: the plugin ships with a bundled,
 standalone `ffsubsync` binary (built via PyInstaller in CI) and uses it
-automatically — no Python install required on the Jellyfin host. It still
-needs `ffmpeg` at runtime for audio extraction, which Jellyfin already bundles
-for transcoding, so this is normally already present.
+automatically — no Python install required on the Jellyfin host. ffsubsync
+needs `ffmpeg`/`ffprobe` for audio extraction; the plugin points it at the
+ffmpeg Jellyfin itself uses (e.g. `/usr/lib/jellyfin-ffmpeg`), so nothing
+extra has to be on `PATH`.
 
 On other platforms (or if you'd rather use your own install), install
 `ffsubsync` yourself and either put it on the `PATH` of the Jellyfin server
@@ -68,6 +69,24 @@ They are excluded from `dotnet test` by default via the `Integration` trait.
 
 ```sh
 docker compose -f docker/integration/docker-compose.integration.yml up --build --abort-on-container-exit
+```
+
+Without Docker, point them at any ffsubsync binary (ffmpeg must be on `PATH`):
+
+```sh
+FFSUBSYNC_PATH=/path/to/ffsubsync dotnet test tests/Jellyfin.Plugin.SubtitleAutoAlign.IntegrationTests --filter Category=Integration
+```
+
+### Plugin load tests (Jellyfin 12.1 container)
+
+These publish the plugin, install it into a throwaway `jellyfin/jellyfin:12.1`
+container and check the server log. They confirm that Jellyfin actually loads
+the plugin, that the subtitle watcher starts, and that no Jellyfin server
+assemblies are bundled alongside the plugin. Run them on the host (Docker must
+be usable by your user):
+
+```sh
+dotnet test tests/Jellyfin.Plugin.SubtitleAutoAlign.IntegrationTests --filter Category=JellyfinContainer
 ```
 
 ## Releasing

@@ -4,6 +4,7 @@ using Jellyfin.Plugin.SubtitleAutoAlign.Configuration;
 using Jellyfin.Plugin.SubtitleAutoAlign.EventSubscribers;
 using Jellyfin.Plugin.SubtitleAutoAlign.Services;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,6 +26,9 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
                 provider.GetRequiredService<IProcessRunner>(),
                 provider.GetRequiredService<IFfSubSyncLocator>(),
                 () => Plugin.Instance!.Configuration,
+                // Jellyfin's ffmpeg (e.g. /usr/lib/jellyfin-ffmpeg) is usually not on PATH.
+                // Resolved per call: EncoderPath is only set once the server has started.
+                () => Path.GetDirectoryName(provider.GetRequiredService<IMediaEncoder>().EncoderPath),
                 provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<SubtitleAlignmentService>>()));
 
         serviceCollection.AddHostedService<SubtitleDownloadWatcher>();

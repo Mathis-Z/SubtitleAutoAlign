@@ -18,12 +18,15 @@ public static class FfSubSyncArgumentBuilder
     /// <param name="outputPath">Path to write the aligned subtitle to.</param>
     /// <param name="extraArguments">Optional extra CLI arguments, space-separated and
     /// possibly containing double-quoted segments (e.g. "--max-offset-seconds 60").</param>
+    /// <param name="ffmpegDirectory">Directory containing ffmpeg and ffprobe, passed as
+    /// <c>--ffmpeg-path</c>; null or empty lets ffsubsync search PATH.</param>
     /// <returns>Ordered argument list, suitable for <c>ProcessStartInfo.ArgumentList</c>.</returns>
     public static IReadOnlyList<string> Build(
         string videoPath,
         string subtitlePath,
         string outputPath,
-        string? extraArguments = null)
+        string? extraArguments = null,
+        string? ffmpegDirectory = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(videoPath);
         ArgumentException.ThrowIfNullOrEmpty(subtitlePath);
@@ -38,6 +41,13 @@ public static class FfSubSyncArgumentBuilder
             outputPath,
         };
 
+        if (!string.IsNullOrEmpty(ffmpegDirectory))
+        {
+            arguments.Add("--ffmpeg-path");
+            arguments.Add(ffmpegDirectory);
+        }
+
+        // Added last so a user-supplied option (e.g. their own --ffmpeg-path) wins.
         arguments.AddRange(TokenizeExtraArguments(extraArguments));
 
         return arguments;

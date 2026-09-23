@@ -27,6 +27,32 @@ public class FfSubSyncArgumentBuilderTests
             result);
     }
 
+    [Fact]
+    public void Build_WithFfmpegDirectory_AddsFfmpegPathBeforeExtraArgs()
+    {
+        var result = FfSubSyncArgumentBuilder.Build(
+            "video.mkv",
+            "sub.srt",
+            "out.srt",
+            "--ffmpeg-path /custom",
+            "/usr/lib/jellyfin-ffmpeg");
+
+        // ffsubsync (argparse) keeps the last occurrence, so a user override wins.
+        Assert.Equal(
+            new[] { "video.mkv", "-i", "sub.srt", "-o", "out.srt", "--ffmpeg-path", "/usr/lib/jellyfin-ffmpeg", "--ffmpeg-path", "/custom" },
+            result);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void Build_WithoutFfmpegDirectory_OmitsFfmpegPath(string? ffmpegDirectory)
+    {
+        var result = FfSubSyncArgumentBuilder.Build("video.mkv", "sub.srt", "out.srt", null, ffmpegDirectory);
+
+        Assert.DoesNotContain("--ffmpeg-path", result);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
