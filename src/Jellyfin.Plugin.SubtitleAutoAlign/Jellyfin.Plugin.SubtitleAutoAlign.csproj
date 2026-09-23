@@ -26,8 +26,23 @@
       assembly the server has already loaded.
     -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Jellyfin.Controller" Version="12.1.0" />
-    <PackageReference Include="Jellyfin.Model" Version="12.1.0" />
+    <!--
+      ExcludeAssets="runtime" (matching the official jellyfin-plugin-template)
+      stops MediaBrowser.Controller/Model and their whole transitive dependency
+      tree from being copied into this plugin's own output folder. Without it,
+      Jellyfin's PluginLoadContext finds those DLLs locally and loads its own
+      separate copies, so types like IPlugin/IPluginServiceRegistrator become
+      distinct, non-matching CLR types from the server's own copies - every
+      IsAssignableFrom/type check against them silently fails, with no
+      exception and no log line. Excluding them forces resolution to fall
+      through to the server's already-loaded shared assemblies instead.
+    -->
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="12.1.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>

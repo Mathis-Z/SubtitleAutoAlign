@@ -26,6 +26,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      The plugin project excludes these from its own output (ExcludeAssets
+      "runtime") so it binds to the Jellyfin server's already-loaded copies at
+      runtime instead of loading duplicate, non-identical types. That
+      exclusion propagates through the ProjectReference above, but this test
+      project runs standalone (not inside Jellyfin), so it needs its own
+      direct reference to actually have these DLLs present at test run time.
+    -->
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.0" />
+    <PackageReference Include="Jellyfin.Model" Version="12.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

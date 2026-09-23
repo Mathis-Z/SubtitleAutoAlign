@@ -49,6 +49,8 @@ public sealed class SubtitleDownloadWatcher : IHostedService
         ISubtitleAlignmentService alignmentService,
         ILogger<SubtitleDownloadWatcher> logger)
     {
+        WriteDiagnosticMarker("SubtitleDownloadWatcher constructor called");
+
         _libraryManager = libraryManager ?? throw new ArgumentNullException(nameof(libraryManager));
         _alignmentService = alignmentService ?? throw new ArgumentNullException(nameof(alignmentService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -57,6 +59,8 @@ public sealed class SubtitleDownloadWatcher : IHostedService
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        WriteDiagnosticMarker("StartAsync called");
+
         _libraryManager.ItemUpdated += OnItemUpdated;
 
         _workerCts = new CancellationTokenSource();
@@ -65,6 +69,24 @@ public sealed class SubtitleDownloadWatcher : IHostedService
         _logger.LogInformation("Subtitle Auto Align is watching the library for newly-appeared subtitle files.");
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Writes directly to a fixed file, bypassing the logging pipeline entirely.
+    /// Temporary diagnostic; safe to remove once the startup issue is confirmed fixed.
+    /// </summary>
+    private static void WriteDiagnosticMarker(string message)
+    {
+        try
+        {
+            System.IO.File.AppendAllText(
+                "/tmp/subtitle-auto-align-diagnostics.log",
+                $"{DateTime.UtcNow:O} {message}{Environment.NewLine}");
+        }
+        catch (Exception)
+        {
+            // Best-effort diagnostic only; never let this affect real startup.
+        }
     }
 
     /// <inheritdoc />
