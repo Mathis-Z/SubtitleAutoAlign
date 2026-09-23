@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 env:
-  TARGET_ABI: '10.10.0.0'
+  TARGET_ABI: '12.1.0.0'
   PLUGIN_PROJECT: src/Jellyfin.Plugin.SubtitleAutoAlign
   ARTIFACT_NAME: subtitle-auto-align-${{ github.event.inputs.version }}
 
@@ -90,7 +90,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Publish plugin
         run: |
