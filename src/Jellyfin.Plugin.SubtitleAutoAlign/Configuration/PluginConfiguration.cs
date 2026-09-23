@@ -8,8 +8,8 @@ namespace Jellyfin.Plugin.SubtitleAutoAlign.Configuration;
 public sealed class PluginConfiguration : BasePluginConfiguration
 {
     /// <summary>
-    /// Gets or sets a value indicating whether new subtitles should be
-    /// automatically aligned.
+    /// Gets or sets a value indicating whether newly-appeared subtitles are
+    /// aligned automatically. Does not affect the "Align all subtitles" task.
     /// </summary>
     public bool EnableAutoAlign { get; set; } = true;
 

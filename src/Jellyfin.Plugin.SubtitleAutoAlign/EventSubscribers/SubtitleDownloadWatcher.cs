@@ -128,12 +128,7 @@ public sealed class SubtitleDownloadWatcher : IHostedService
             return;
         }
 
-        var currentSubtitlePaths = movie.GetMediaStreams()
-            .Where(stream => stream.Type == MediaBrowser.Model.Entities.MediaStreamType.Subtitle
-                && stream.IsExternal
-                && !string.IsNullOrEmpty(stream.Path))
-            .Select(stream => stream.Path)
-            .ToList();
+        var currentSubtitlePaths = SubtitleDiscovery.GetExternalSubtitlePaths(movie);
 
         var previousSubtitlePaths = _knownSubtitlePaths.GetOrAdd(movie.Id, _ => new HashSet<string>());
 
@@ -149,6 +144,14 @@ public sealed class SubtitleDownloadWatcher : IHostedService
 
         if (newPaths.Count == 0)
         {
+            return;
+        }
+
+        // Checked after the snapshot update, so subtitles that appear while this is
+        // off are not aligned later; the "Align all subtitles" task covers those.
+        if (Plugin.Instance?.Configuration.EnableAutoAlign == false)
+        {
+            _logger.LogInformation("Automatic alignment is disabled; not aligning new subtitles for {MovieName}", movie.Name);
             return;
         }
 

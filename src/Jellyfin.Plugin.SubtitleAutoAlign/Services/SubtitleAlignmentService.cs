@@ -48,12 +48,6 @@ public sealed class SubtitleAlignmentService : ISubtitleAlignmentService
         var configuration = _configurationAccessor();
         var outputPath = SubtitleFileNaming.BuildAlignedOutputPath(request.SubtitlePath);
 
-        if (!configuration.EnableAutoAlign)
-        {
-            _logger.LogDebug("Auto-align disabled; skipping {SubtitlePath}", request.SubtitlePath);
-            return new AlignmentResult(Success: false, OutputPath: outputPath, Skipped: true, ErrorMessage: null);
-        }
-
         if (File.Exists(outputPath) && !configuration.OverwriteExistingAlignedSubtitle)
         {
             _logger.LogDebug("Aligned subtitle already exists at {OutputPath}; skipping", outputPath);

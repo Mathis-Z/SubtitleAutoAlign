@@ -3,19 +3,19 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
+using Jellyfin.Plugin.SubtitleAutoAlign.ScheduledTasks;
 using Xunit;
 
 namespace Jellyfin.Plugin.SubtitleAutoAlign.IntegrationTests;
 
 /// <summary>
 /// Runs Jellyfin 12.1 with the plugin (including the bundled ffsubsync) and the
-/// "Us Now" clip in /media, sets it up through its HTTP API and adds a
-/// deliberately shifted subtitle, the way a subtitle download would.
-/// The API is called with curl inside the container, so no host port is needed.
+/// "Us Now" clip in /media. Each test class gets its own container.
 /// </summary>
 public sealed class JellyfinEndToEndFixture : IAsyncLifetime
 {
@@ -55,10 +55,71 @@ public sealed class JellyfinEndToEndFixture : IAsyncLifetime
     }
 }
 
+/// <summary>
+/// A newly-appeared subtitle is aligned automatically.
+/// </summary>
 [Trait("Category", "JellyfinContainer")]
 public class JellyfinEndToEndTests : IClassFixture<JellyfinEndToEndFixture>
 {
+    private readonly JellyfinTestServer _server;
+
+    public JellyfinEndToEndTests(JellyfinEndToEndFixture fixture)
+    {
+        _server = new JellyfinTestServer(fixture.Container);
+    }
+
+    [Fact]
+    public async Task NewSubtitle_IsAutoAlignedNextToTheMovie()
+    {
+        await _server.CompleteSetupAndLogInAsync();
+        var movieId = await _server.CreateMovieLibraryAsync();
+
+        // A downloaded subtitle lands next to the movie and the item gets refreshed.
+        await _server.AddShiftedSubtitleAsync(movieId);
+
+        await _server.AssertAlignedSubtitleRestoresOriginalAsync();
+    }
+}
+
+/// <summary>
+/// With automatic alignment off, the "Align all subtitles" task still aligns
+/// subtitles that are already in the library.
+/// </summary>
+[Trait("Category", "JellyfinContainer")]
+public class JellyfinAlignAllTaskTests : IClassFixture<JellyfinEndToEndFixture>
+{
+    private readonly JellyfinTestServer _server;
+
+    public JellyfinAlignAllTaskTests(JellyfinEndToEndFixture fixture)
+    {
+        _server = new JellyfinTestServer(fixture.Container);
+    }
+
+    [Fact]
+    public async Task AlignAllTask_AlignsExistingSubtitles()
+    {
+        await _server.CompleteSetupAndLogInAsync();
+        await _server.SetAutoAlignAsync(false);
+        var movieId = await _server.CreateMovieLibraryAsync();
+        await _server.AddShiftedSubtitleAsync(movieId);
+        await _server.WaitForExternalSubtitleAsync(movieId);
+
+        Assert.False(await _server.AlignedSubtitleExistsAsync(), "Automatic alignment is off, so nothing should be aligned yet.");
+
+        await _server.StartScheduledTaskAsync(AlignAllSubtitlesTask.TaskKey);
+
+        await _server.AssertAlignedSubtitleRestoresOriginalAsync();
+    }
+}
+
+/// <summary>
+/// Drives a Jellyfin test container through its HTTP API, calling curl
+/// inside the container so no host port is needed.
+/// </summary>
+public sealed class JellyfinTestServer
+{
     private const string ClientAuthorization = "MediaBrowser Client=\"integration-tests\", Device=\"integration-tests\", DeviceId=\"integration-tests\", Version=\"1.0.0\"";
+    private const string AlignedPath = JellyfinEndToEndFixture.MovieDirectory + "/us-now-5min.en.autoaligned.srt";
     private static readonly TimeSpan Shift = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan Tolerance = TimeSpan.FromSeconds(1);
 
@@ -66,34 +127,90 @@ public class JellyfinEndToEndTests : IClassFixture<JellyfinEndToEndFixture>
     private static readonly string[] FailureMarkers = ["ffsubsync exited with code", "Failed to run ffsubsync", "ffsubsync timed out"];
 
     private readonly IContainer _container;
+    private string? _token;
 
-    public JellyfinEndToEndTests(JellyfinEndToEndFixture fixture)
+    public JellyfinTestServer(IContainer container)
     {
-        _container = fixture.Container;
+        _container = container;
     }
 
-    [Fact]
-    public async Task NewSubtitle_IsAutoAlignedNextToTheMovie()
-    {
-        var token = await CompleteSetupAndLogInAsync();
+    private static string OriginalSubtitle =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "us-now-5min.en.srt"));
 
-        await ApiAsync("POST", "/Library/VirtualFolders?name=Movies&collectionType=movies&refreshLibrary=true", token,
+    public async Task CompleteSetupAndLogInAsync()
+    {
+        await ApiAsync("POST", "/Startup/Configuration", """{"UICulture":"en-US","MetadataCountryCode":"US","PreferredMetadataLanguage":"en"}""");
+        await ApiAsync("GET", "/Startup/User");
+        await ApiAsync("POST", "/Startup/User", """{"Name":"tests","Password":"tests"}""");
+        await ApiAsync("POST", "/Startup/Complete");
+
+        using var auth = JsonDocument.Parse(await ApiAsync("POST", "/Users/AuthenticateByName", """{"Username":"tests","Pw":"tests"}"""));
+        _token = auth.RootElement.GetProperty("AccessToken").GetString();
+    }
+
+    /// <summary>Creates a Movies library over /media and returns the clip's item id.</summary>
+    public async Task<string> CreateMovieLibraryAsync()
+    {
+        await ApiAsync("POST", "/Library/VirtualFolders?name=Movies&collectionType=movies&refreshLibrary=true",
             """{"LibraryOptions":{"PathInfos":[{"Path":"/media"}]}}""");
-        var movieId = await WaitForAsync("the movie to be added to the library", TimeSpan.FromMinutes(2), async () =>
+
+        return await WaitForAsync("the movie to be added to the library", TimeSpan.FromMinutes(2), async () =>
         {
-            using var items = JsonDocument.Parse(await ApiAsync("GET", "/Items?Recursive=true&IncludeItemTypes=Movie", token));
+            using var items = JsonDocument.Parse(await ApiAsync("GET", "/Items?Recursive=true&IncludeItemTypes=Movie"));
             return items.RootElement.GetProperty("Items").EnumerateArray().Select(i => i.GetProperty("Id").GetString()).FirstOrDefault();
         });
+    }
 
-        // A downloaded subtitle lands next to the movie and the item gets refreshed.
-        var original = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "us-now-5min.en.srt"));
-        await _container.CopyAsync(Encoding.UTF8.GetBytes(SrtTimings.Shift(original, Shift)), $"{JellyfinEndToEndFixture.MovieDirectory}/us-now-5min.en.srt");
-        await ApiAsync("POST", $"/Items/{movieId}/Refresh?metadataRefreshMode=Default&imageRefreshMode=Default", token);
+    public async Task SetAutoAlignAsync(bool enabled)
+    {
+        var path = $"/Plugins/{Plugin.PluginGuid}/Configuration";
+        var configuration = JsonNode.Parse(await ApiAsync("GET", path))!;
+        configuration["EnableAutoAlign"] = enabled;
+        await ApiAsync("POST", path, configuration.ToJsonString());
+    }
 
-        var alignedPath = $"{JellyfinEndToEndFixture.MovieDirectory}/us-now-5min.en.autoaligned.srt";
-        await WaitForAsync("the plugin to write " + alignedPath, TimeSpan.FromMinutes(3), async () =>
+    /// <summary>Puts the subtitle, shifted by 6 s, next to the movie and refreshes the item.</summary>
+    public async Task AddShiftedSubtitleAsync(string movieId)
+    {
+        await _container.CopyAsync(
+            Encoding.UTF8.GetBytes(SrtTimings.Shift(OriginalSubtitle, Shift)),
+            $"{JellyfinEndToEndFixture.MovieDirectory}/us-now-5min.en.srt");
+        await ApiAsync("POST", $"/Items/{movieId}/Refresh?metadataRefreshMode=Default&imageRefreshMode=Default");
+    }
+
+    public Task WaitForExternalSubtitleAsync(string movieId)
+    {
+        return WaitForAsync("Jellyfin to pick up the external subtitle", TimeSpan.FromMinutes(1), async () =>
         {
-            if ((await _container.ExecAsync(["test", "-s", alignedPath])).ExitCode == 0)
+            using var items = JsonDocument.Parse(await ApiAsync("GET", $"/Items?Ids={movieId}&Fields=MediaStreams"));
+            var hasExternalSubtitle = items.RootElement.GetProperty("Items").EnumerateArray()
+                .SelectMany(i => i.GetProperty("MediaStreams").EnumerateArray())
+                .Any(s => s.GetProperty("Type").GetString() == "Subtitle" && s.GetProperty("IsExternal").GetBoolean());
+            return hasExternalSubtitle ? "done" : null;
+        });
+    }
+
+    public async Task StartScheduledTaskAsync(string key)
+    {
+        using var tasks = JsonDocument.Parse(await ApiAsync("GET", "/ScheduledTasks"));
+        var id = tasks.RootElement.EnumerateArray()
+            .Where(t => t.GetProperty("Key").GetString() == key)
+            .Select(t => t.GetProperty("Id").GetString())
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException($"Scheduled task '{key}' is not registered.");
+
+        await ApiAsync("POST", $"/ScheduledTasks/Running/{id}");
+    }
+
+    public async Task<bool> AlignedSubtitleExistsAsync() =>
+        (await _container.ExecAsync(["test", "-s", AlignedPath])).ExitCode == 0;
+
+    /// <summary>Waits for the aligned file and checks it is within 1 s of the unshifted original.</summary>
+    public async Task AssertAlignedSubtitleRestoresOriginalAsync()
+    {
+        await WaitForAsync("the plugin to write " + AlignedPath, TimeSpan.FromMinutes(3), async () =>
+        {
+            if (await AlignedSubtitleExistsAsync())
             {
                 return "done";
             }
@@ -107,28 +224,17 @@ public class JellyfinEndToEndTests : IClassFixture<JellyfinEndToEndFixture>
             return null;
         });
 
-        var aligned = Encoding.UTF8.GetString(await _container.ReadFileAsync(alignedPath));
-        var expected = SrtTimings.CueStarts(original);
+        var aligned = Encoding.UTF8.GetString(await _container.ReadFileAsync(AlignedPath));
+        var expected = SrtTimings.CueStarts(OriginalSubtitle);
         var actual = SrtTimings.CueStarts(aligned);
         Assert.Equal(expected.Count, actual.Count);
         var worst = expected.Zip(actual, (e, a) => (a - e).Duration()).Max();
         Assert.True(worst <= Tolerance, $"Aligned cue starts differ from the originals by up to {worst.TotalSeconds:F3}s.");
     }
 
-    private async Task<string> CompleteSetupAndLogInAsync()
+    private async Task<string> ApiAsync(string method, string path, string? jsonBody = null)
     {
-        await ApiAsync("POST", "/Startup/Configuration", null, """{"UICulture":"en-US","MetadataCountryCode":"US","PreferredMetadataLanguage":"en"}""");
-        await ApiAsync("GET", "/Startup/User", null);
-        await ApiAsync("POST", "/Startup/User", null, """{"Name":"tests","Password":"tests"}""");
-        await ApiAsync("POST", "/Startup/Complete", null);
-
-        using var auth = JsonDocument.Parse(await ApiAsync("POST", "/Users/AuthenticateByName", null, """{"Username":"tests","Pw":"tests"}"""));
-        return auth.RootElement.GetProperty("AccessToken").GetString()!;
-    }
-
-    private async Task<string> ApiAsync(string method, string path, string? token, string? jsonBody = null)
-    {
-        var authorization = token is null ? ClientAuthorization : $"{ClientAuthorization}, Token=\"{token}\"";
+        var authorization = _token is null ? ClientAuthorization : $"{ClientAuthorization}, Token=\"{_token}\"";
         var command = new[]
         {
             "curl", "-sS", "-X", method, "-w", "\n%{http_code}",

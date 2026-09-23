@@ -68,16 +68,17 @@ public class SubtitleAlignmentServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task AlignAsync_Disabled_SkipsWithoutInvokingRunner()
+    public async Task AlignAsync_AutoAlignDisabled_StillAligns()
     {
+        // EnableAutoAlign only gates the automatic watcher; explicit runs such
+        // as the "Align all subtitles" task must still work.
         var (service, runner) = CreateService(new PluginConfiguration { EnableAutoAlign = false });
 
         var request = new AlignmentRequest(Guid.NewGuid(), VideoPath(), SubtitlePath());
         var result = await service.AlignAsync(request, CancellationToken.None);
 
-        Assert.True(result.Skipped);
-        Assert.False(result.Success);
-        Assert.Equal(0, runner.CallCount);
+        Assert.True(result.Success);
+        Assert.Equal(1, runner.CallCount);
     }
 
     [Fact]

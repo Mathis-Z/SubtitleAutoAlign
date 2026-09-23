@@ -43,9 +43,20 @@ For each eligible subtitle, the plugin runs:
 ffsubsync <video> -i <subtitle> -o <subtitle-with-autoaligned-suffix>
 ```
 
+### Aligning existing subtitles
+
+Subtitles that were already in your library before the plugin was installed
+(or that appeared while automatic alignment was off) can be aligned in one go
+with the **Align all subtitles** scheduled task. Start it with the **Align all
+subtitles now** button on the plugin's settings page, or under **Dashboard ->
+Scheduled Tasks**, where you can also follow its progress, cancel it, or give it
+a schedule. It aligns every external subtitle of every movie that doesn't have
+an `.autoaligned` copy yet.
+
 ## Configuration
 
-- **Enable automatic alignment** — master on/off switch.
+- **Enable automatic alignment** — align new subtitles as they appear. Doesn't
+  affect the **Align all subtitles** task.
 - **ffsubsync path** — leave empty (the default) to auto-detect: prefers the
   bundled binary on Linux x64, otherwise falls back to `ffsubsync` on PATH.
   Set an explicit executable name or full path to override.
