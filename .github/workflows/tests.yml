@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install ffmpeg
+        # The real-ffsubsync integration tests use ffmpeg from PATH.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Build bundled ffsubsync
+        # Tagged with the name the Jellyfin container tests build, so their
+        # build is a cache hit. The binary is also extracted for the
+        # real-ffsubsync integration tests.
+        run: |
+          docker build -t subtitle-auto-align/ffsubsync-build:test build/ffsubsync
+          id=$(docker create subtitle-auto-align/ffsubsync-build:test)
+          docker cp "$id:/build/dist/ffsubsync" "$RUNNER_TEMP/ffsubsync"
+          docker rm "$id"
+
+      - name: Run all tests
+        # Unit tests, real-ffsubsync integration tests and the Jellyfin 12.1
+        # container tests (plugin loading and end-to-end alignment).
+        env:
+          FFSUBSYNC_PATH: ${{ runner.temp }}/ffsubsync
+        run: dotnet test SubtitleAutoAlign.sln -c Release --logger "console;verbosity=normal"

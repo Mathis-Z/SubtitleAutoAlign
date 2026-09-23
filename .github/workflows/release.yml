@@ -22,6 +22,9 @@ env:
   ARTIFACT_NAME: subtitle-auto-align-${{ github.event.inputs.version }}
 
 jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   build-ffsubsync:
     # Builds a standalone, PyInstaller-frozen ffsubsync binary for linux-x64 so
     # the plugin can ship it and avoid requiring a separate Python install on
@@ -35,61 +38,28 @@ jobs:
     # platforms the plugin falls back to "ffsubsync" resolved via PATH.
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install ffsubsync and PyInstaller
-        run: pip install ffsubsync pyinstaller
-
-      - name: Write PyInstaller entry point
-        run: |
-          cat > ffsubsync_entry.py <<'PYEOF'
-          import sys
-
-          from ffsubsync.ffsubsync import main
-
-          if __name__ == "__main__":
-              sys.exit(main())
-          PYEOF
-
-      - name: Write PyInstaller hook for webrtcvad
-        run: |
-          # webrtcvad is ffsubsync's default speech detector, so it must be
-          # bundled. The module ships in the "webrtcvad-wheels" distribution,
-          # but PyInstaller's stock hook copies metadata for "webrtcvad" and
-          # crashes. Hooks from --additional-hooks-dir take precedence.
-          mkdir -p pyinstaller-hooks
-          cat > pyinstaller-hooks/hook-webrtcvad.py <<'PYEOF'
-          from PyInstaller.utils.hooks import copy_metadata
-
-          datas = copy_metadata("webrtcvad-wheels")
-          PYEOF
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Build standalone binary
+        # Same recipe the Jellyfin container tests use; built on Debian 12 so
+        # the binary runs on glibc 2.36 and newer.
         run: |
-          pyinstaller --onefile --name ffsubsync \
-            --additional-hooks-dir pyinstaller-hooks \
-            --collect-all ffsubsync \
-            --collect-all auditok \
-            --hidden-import webrtcvad \
-            ffsubsync_entry.py
+          docker build -t ffsubsync-build build/ffsubsync
+          id=$(docker create ffsubsync-build)
+          mkdir -p dist
+          docker cp "$id:/build/dist/ffsubsync" dist/ffsubsync
+          docker rm "$id"
 
-      - name: Smoke test binary with a real alignment
+      - name: Smoke test inside Jellyfin 12.1
+        # A real alignment of the fixture clip using Jellyfin's own ffmpeg,
+        # exactly as the plugin runs it. --help alone would not catch a
+        # missing speech detector or ffmpeg library clashes.
         run: |
-          # --help alone never loads the speech detector; run an actual
-          # alignment, with ffmpeg reachable only via --ffmpeg-path like on
-          # a Jellyfin server.
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
-          mkdir -p ffmpeg-dir
-          ln -s "$(command -v ffmpeg)" ffmpeg-dir/ffmpeg
-          ln -s "$(command -v ffprobe)" ffmpeg-dir/ffprobe
-          ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=6" \
-            -f lavfi -i color=c=black:s=64x64:d=6 -shortest smoke.mp4
-          printf '1\n00:00:01,000 --> 00:00:03,000\nhello\n\n2\n00:00:04,000 --> 00:00:05,000\nworld\n' > smoke.srt
-          env PATH=/nonexistent ./dist/ffsubsync smoke.mp4 -i smoke.srt -o smoke.out.srt --ffmpeg-path "$PWD/ffmpeg-dir"
-          test -s smoke.out.srt
+          fixtures=tests/Jellyfin.Plugin.SubtitleAutoAlign.IntegrationTests/Fixtures
+          docker run --rm --entrypoint /work/dist/ffsubsync -v "$PWD:/work" jellyfin/jellyfin:12.1 \
+            "/work/$fixtures/us-now-5min.mp4" -i "/work/$fixtures/us-now-5min.en.srt" -o /tmp/out.srt \
+            --ffmpeg-path /usr/lib/jellyfin-ffmpeg
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
@@ -99,7 +69,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: build-ffsubsync
+    # Nothing is committed or published unless every test passed.
+    needs: [tests, build-ffsubsync]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

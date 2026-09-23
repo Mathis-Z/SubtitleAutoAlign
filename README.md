@@ -4,6 +4,7 @@ A Jellyfin plugin that automatically aligns newly downloaded subtitles to a
 movie's audio using [ffsubsync](https://github.com/smacke/ffsubsync), writing
 the result alongside the original with an `.autoaligned` suffix (e.g.
 `Movie.en.srt` -> `Movie.en.autoaligned.srt`).
+Note: This plugin is completely AI-written so use this at your own risk.
 
 ## Installation
 
@@ -82,8 +83,11 @@ FFSUBSYNC_PATH=/path/to/ffsubsync dotnet test tests/Jellyfin.Plugin.SubtitleAuto
 These publish the plugin, install it into a throwaway `jellyfin/jellyfin:12.1`
 container and check the server log. They confirm that Jellyfin actually loads
 the plugin, that the subtitle watcher starts, and that no Jellyfin server
-assemblies are bundled alongside the plugin. Run them on the host (Docker must
-be usable by your user):
+assemblies are bundled alongside the plugin. An end-to-end test also builds
+the bundled ffsubsync (`build/ffsubsync/Dockerfile`, same as releases), sets
+Jellyfin up with a Movies library containing the *Us Now* clip, adds a
+subtitle shifted by 6 s and checks that the plugin writes a correctly aligned
+`.autoaligned.srt`. Run them on the host (Docker must be usable by your user):
 
 ```sh
 dotnet test tests/Jellyfin.Plugin.SubtitleAutoAlign.IntegrationTests --filter Category=JellyfinContainer
@@ -92,8 +96,10 @@ dotnet test tests/Jellyfin.Plugin.SubtitleAutoAlign.IntegrationTests --filter Ca
 ## Releasing
 
 Releases are built via the manually-triggered **Release** GitHub Action
-(`Actions -> Release -> Run workflow`). It first builds a standalone
-`ffsubsync` binary for linux-x64 with PyInstaller, then publishes the plugin,
+(`Actions -> Release -> Run workflow`). It first runs the full test suite
+(the **Tests** workflow, which also runs on every push and pull request) and
+stops if anything fails. It builds a standalone `ffsubsync` binary for
+linux-x64 with PyInstaller (`build/ffsubsync/Dockerfile`), then publishes the plugin,
 bundles that binary into the plugin's output directory (at
 `bundled/linux-x64/ffsubsync`), packages everything into a zip, updates
 `manifest.json` with the new version's checksum and download URL, commits

@@ -19,10 +19,9 @@ namespace Jellyfin.Plugin.SubtitleAutoAlign.IntegrationTests;
 /// </summary>
 public sealed class JellyfinContainerFixture : IAsyncLifetime
 {
-    public const string PluginVersion = "1.0.0.0";
-    public const string PluginFolder = "Subtitle Auto Align_" + PluginVersion;
+    public const string PluginVersion = PluginTestPackage.PluginVersion;
+    public const string PluginFolder = PluginTestPackage.PluginFolder;
 
-    private const string Image = "jellyfin/jellyfin:12.1";
     private const string WatcherStartedMessage = "Subtitle Auto Align is watching the library";
 
     private readonly string _pluginDirectory = Directory.CreateTempSubdirectory("subtitle-auto-align-plugin-").FullName;
@@ -32,18 +31,12 @@ public sealed class JellyfinContainerFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await PublishPluginAsync(_pluginDirectory);
-        WriteManifest(_pluginDirectory);
-
-        // Ryuk needs a published host port, which firewalld/nftables setups
-        // often block, making startup hang. This test only reads container
-        // logs, and DisposeAsync removes the container itself.
-        TestcontainersSettings.ResourceReaperEnabled = false;
+        await PluginTestPackage.PublishAsync(_pluginDirectory);
 
         // Copied in rather than bind-mounted: SELinux would block the
         // container from reading an unlabelled host directory.
-        _container = new ContainerBuilder(Image)
-            .WithResourceMapping(new DirectoryInfo(_pluginDirectory), $"/config/plugins/{PluginFolder}/")
+        _container = new ContainerBuilder(PluginTestPackage.JellyfinImage)
+            .WithResourceMapping(new DirectoryInfo(_pluginDirectory), $"{PluginTestPackage.PluginPath}/")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Startup complete"))
             .Build();
 
@@ -74,58 +67,6 @@ public sealed class JellyfinContainerFixture : IAsyncLifetime
         }
 
         Directory.Delete(_pluginDirectory, recursive: true);
-    }
-
-    private static async Task PublishPluginAsync(string outputDirectory)
-    {
-        var projectPath = Path.Combine(FindRepositoryRoot(), "src", "Jellyfin.Plugin.SubtitleAutoAlign");
-
-        var result = await new ProcessRunner().RunAsync(
-            "dotnet",
-            ["publish", projectPath, "-c", "Release", $"-p:Version={PluginVersion}", "-o", outputDirectory],
-            TimeSpan.FromMinutes(5),
-            CancellationToken.None);
-
-        if (result.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"dotnet publish failed with exit code {result.ExitCode}:{Environment.NewLine}{result.StandardOutput}{result.StandardError}");
-        }
-    }
-
-    private static void WriteManifest(string pluginDirectory)
-    {
-        var manifest = new
-        {
-            guid = Plugin.PluginGuid.ToString(),
-            name = "Subtitle Auto Align",
-            description = "Integration test install.",
-            overview = "Integration test install.",
-            owner = "integration-tests",
-            category = "Subtitles",
-            version = PluginVersion,
-            targetAbi = "12.1.0.0",
-            changelog = string.Empty,
-            timestamp = DateTime.UtcNow.ToString("O"),
-            status = "Active",
-            autoUpdate = false,
-            imagePath = string.Empty,
-            assemblies = Array.Empty<string>(),
-        };
-
-        File.WriteAllText(Path.Combine(pluginDirectory, "meta.json"), JsonSerializer.Serialize(manifest));
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "SubtitleAutoAlign.sln")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory?.FullName
-            ?? throw new InvalidOperationException("Could not find SubtitleAutoAlign.sln above " + AppContext.BaseDirectory);
     }
 }
 
