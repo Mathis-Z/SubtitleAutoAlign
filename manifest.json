@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/Mathis-Z/subtitle-auto-align/main/icon.png",
     "versions": [
       {
+        "version": "0.1.1",
+        "changelog": "Fixing some subtitle detection bug.",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/Mathis-Z/SubtitleAutoAlign/releases/download/v0.1.1/subtitle-auto-align-0.1.1.zip",
+        "checksum": "ef66bbc1d39bce352537c7b0b1ef45fe",
+        "timestamp": "2026-09-23T13:31:59Z"
+      },
+      {
         "version": "0.1.0",
         "changelog": "First test release",
         "targetAbi": "10.10.0.0",
