@@ -160,8 +160,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add manifest.json
-          git commit -m "Release v${{ github.event.inputs.version }}"
+          git diff --staged --quiet && echo "No manifest.json changes to commit" || git commit -m "Release v${{ github.event.inputs.version }}"
           git push
+
+      - name: Delete existing release and tag, if any
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Re-running the workflow for a version that was already released
+          # replaces that release rather than failing on a duplicate tag.
+          gh release delete "v${{ github.event.inputs.version }}" --yes --cleanup-tag || true
 
       - name: Create GitHub Release
         env:
