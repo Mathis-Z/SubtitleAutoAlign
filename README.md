@@ -50,8 +50,17 @@ Subtitles that were already in your library before the plugin was installed
 with the **Align all subtitles** scheduled task. Start it with the **Align all
 subtitles now** button on the plugin's settings page, or under **Dashboard ->
 Scheduled Tasks**, where you can also follow its progress, cancel it, or give it
-a schedule. It aligns every external subtitle of every movie that doesn't have
-an `.autoaligned` copy yet.
+a schedule.
+
+The task searches every library folder recursively for subtitle files
+(`.srt`, `.ass`, `.ssa`, `.sub`, `.vtt`) and matches each to the video in the
+same folder whose name it starts with, following Jellyfin's naming
+(`Movie.en.forced.srt` belongs to `Movie.mkv`). This also covers TV episodes
+and subtitles Jellyfin hasn't indexed yet. Subtitles Jellyfin has indexed for
+movies are included too, even if they're stored outside the library folders.
+Anything that already has an `.autoaligned` copy is skipped unless
+**Overwrite existing aligned subtitle** is on; subtitles with no matching video
+are listed in the log.
 
 ## Configuration
 

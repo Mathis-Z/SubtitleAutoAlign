@@ -83,11 +83,14 @@ public class JellyfinEndToEndTests : IClassFixture<JellyfinEndToEndFixture>
 
 /// <summary>
 /// With automatic alignment off, the "Align all subtitles" task still aligns
-/// subtitles that are already in the library.
+/// subtitles that are already in the library, including ones in nested
+/// folders that Jellyfin hasn't indexed.
 /// </summary>
 [Trait("Category", "JellyfinContainer")]
 public class JellyfinAlignAllTaskTests : IClassFixture<JellyfinEndToEndFixture>
 {
+    private const string NestedFolder = "/media/Extras/Nested/Deeper";
+
     private readonly JellyfinTestServer _server;
 
     public JellyfinAlignAllTaskTests(JellyfinEndToEndFixture fixture)
@@ -96,7 +99,7 @@ public class JellyfinAlignAllTaskTests : IClassFixture<JellyfinEndToEndFixture>
     }
 
     [Fact]
-    public async Task AlignAllTask_AlignsExistingSubtitles()
+    public async Task AlignAllTask_AlignsIndexedAndNestedUnindexedSubtitles()
     {
         await _server.CompleteSetupAndLogInAsync();
         await _server.SetAutoAlignAsync(false);
@@ -104,11 +107,15 @@ public class JellyfinAlignAllTaskTests : IClassFixture<JellyfinEndToEndFixture>
         await _server.AddShiftedSubtitleAsync(movieId);
         await _server.WaitForExternalSubtitleAsync(movieId);
 
+        // Copied without a library refresh, so only the folder scan can find it.
+        await _server.AddUnindexedClipWithShiftedSubtitleAsync(NestedFolder, "clip");
+
         Assert.False(await _server.AlignedSubtitleExistsAsync(), "Automatic alignment is off, so nothing should be aligned yet.");
 
         await _server.StartScheduledTaskAsync(AlignAllSubtitlesTask.TaskKey);
 
         await _server.AssertAlignedSubtitleRestoresOriginalAsync();
+        await _server.AssertAlignedSubtitleRestoresOriginalAsync($"{NestedFolder}/clip.en.autoaligned.srt");
     }
 }
 
@@ -178,6 +185,14 @@ public sealed class JellyfinTestServer
         await ApiAsync("POST", $"/Items/{movieId}/Refresh?metadataRefreshMode=Default&imageRefreshMode=Default");
     }
 
+    /// <summary>Puts a copy of the clip and its 6 s-shifted subtitle into <paramref name="folder"/>.</summary>
+    public async Task AddUnindexedClipWithShiftedSubtitleAsync(string folder, string name)
+    {
+        var video = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "us-now-5min.mp4"));
+        await _container.CopyAsync(video, $"{folder}/{name}.mp4");
+        await _container.CopyAsync(Encoding.UTF8.GetBytes(SrtTimings.Shift(OriginalSubtitle, Shift)), $"{folder}/{name}.en.srt");
+    }
+
     public Task WaitForExternalSubtitleAsync(string movieId)
     {
         return WaitForAsync("Jellyfin to pick up the external subtitle", TimeSpan.FromMinutes(1), async () =>
@@ -202,15 +217,15 @@ public sealed class JellyfinTestServer
         await ApiAsync("POST", $"/ScheduledTasks/Running/{id}");
     }
 
-    public async Task<bool> AlignedSubtitleExistsAsync() =>
-        (await _container.ExecAsync(["test", "-s", AlignedPath])).ExitCode == 0;
+    public async Task<bool> AlignedSubtitleExistsAsync(string alignedPath = AlignedPath) =>
+        (await _container.ExecAsync(["test", "-s", alignedPath])).ExitCode == 0;
 
     /// <summary>Waits for the aligned file and checks it is within 1 s of the unshifted original.</summary>
-    public async Task AssertAlignedSubtitleRestoresOriginalAsync()
+    public async Task AssertAlignedSubtitleRestoresOriginalAsync(string alignedPath = AlignedPath)
     {
-        await WaitForAsync("the plugin to write " + AlignedPath, TimeSpan.FromMinutes(3), async () =>
+        await WaitForAsync("the plugin to write " + alignedPath, TimeSpan.FromMinutes(3), async () =>
         {
-            if (await AlignedSubtitleExistsAsync())
+            if (await AlignedSubtitleExistsAsync(alignedPath))
             {
                 return "done";
             }
@@ -224,7 +239,7 @@ public sealed class JellyfinTestServer
             return null;
         });
 
-        var aligned = Encoding.UTF8.GetString(await _container.ReadFileAsync(AlignedPath));
+        var aligned = Encoding.UTF8.GetString(await _container.ReadFileAsync(alignedPath));
         var expected = SrtTimings.CueStarts(OriginalSubtitle);
         var actual = SrtTimings.CueStarts(aligned);
         Assert.Equal(expected.Count, actual.Count);
