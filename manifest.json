@@ -10,11 +10,11 @@
     "versions": [
       {
         "version": "0.1.5.0",
-        "changelog": "adding scheduled task to process existing subs",
+        "changelog": "searching for subs recursively",
         "targetAbi": "12.1.0.0",
         "sourceUrl": "https://github.com/Mathis-Z/SubtitleAutoAlign/releases/download/v0.1.5.0/subtitle-auto-align-0.1.5.0.zip",
-        "checksum": "efebfd9ac389ac1594f2318ac6309593",
-        "timestamp": "2026-09-23T16:51:02Z"
+        "checksum": "f61dd083741a1783f40bec1263715a5a",
+        "timestamp": "2026-09-25T20:29:08Z"
       },
       {
         "version": "0.1.4.0",
